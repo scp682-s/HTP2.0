@@ -416,6 +416,27 @@
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
         }
+        .piece-item.dragging {
+            opacity: 0.5;
+        }
+
+        /* 拖动时的浮动碎片 */
+        .drag-ghost {
+            position: fixed;
+            pointer-events: none;
+            z-index: 10000;
+            border-radius: 6px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            border: 2px solid #667eea;
+            transform: translate(-50%, -50%) scale(1.1);
+            transition: transform 0.1s;
+        }
+
+        /* 格子拖动悬停效果 */
+        .grid-cell.drag-over {
+            background: rgba(102, 126, 234, 0.2);
+            border: 2px solid #667eea !important;
+        }
 
         /* 网格容器 */
         .grid-wrapper {
@@ -436,6 +457,9 @@
             border: 1px dashed #ccc;
             position: relative;
         }
+        .grid-cell:has(.puzzle-piece) {
+            border: none;
+        }
         .grid-cell.correct {
             outline: 3px solid #10b981;
             outline-offset: -2px;
@@ -444,6 +468,9 @@
             width: 100%;
             height: 100%;
             background-size: 100% 100%;
+        }
+        .puzzle-piece.dragging {
+            opacity: 0.5;
         }
         .puzzle-piece.selected {
             outline: 3px solid #667eea;
@@ -1061,6 +1088,14 @@
                 this.hiddenPieces = [];
                 this.tricksterTriggered = false;
                 
+                // 拖动相关
+                this.isDragging = false;
+                this.dragGhost = null;
+                this.dragSource = null;
+                this.dragStartPos = { x: 0, y: 0 };
+                this.dragThreshold = 10; // 拖动阈值，超过此距离才算拖动
+                this.dragFromGrid = false; // 标记是否从格子内拖动
+                
                 // DOM元素
                 this.gridContainer = document.getElementById('gridContainer');
                 this.piecesContainer = document.getElementById('piecesContainer');
@@ -1252,6 +1287,9 @@
 
                     // 点击事件
                     pieceDiv.addEventListener('click', (e) => this.onPieceClick(e, pieceDiv));
+                    
+                    // 触摸拖动事件
+                    this.bindDragEvents(pieceDiv);
 
                     this.piecesContainer.appendChild(pieceDiv);
                 });
@@ -1274,10 +1312,162 @@
                 return indices;
             }
             
+            // 绑定拖动事件（碎片区碎片）
+            bindDragEvents(pieceDiv) {
+                pieceDiv.addEventListener('touchstart', (e) => this.onDragStart(e, pieceDiv, false), { passive: false });
+                pieceDiv.addEventListener('touchmove', (e) => this.onDragMove(e), { passive: false });
+                pieceDiv.addEventListener('touchend', (e) => this.onDragEnd(e), { passive: false });
+            }
+            
+            // 绑定拖动事件（格子内碎片）
+            bindPuzzlePieceDragEvents(pieceDiv) {
+                pieceDiv.addEventListener('touchstart', (e) => this.onDragStart(e, pieceDiv, true), { passive: false });
+                pieceDiv.addEventListener('touchmove', (e) => this.onDragMove(e), { passive: false });
+                pieceDiv.addEventListener('touchend', (e) => this.onDragEnd(e), { passive: false });
+            }
+            
+            // 拖动开始
+            onDragStart(e, pieceDiv, isFromGrid = false) {
+                if (this.gameState !== 'playing') return;
+                
+                const touch = e.touches[0];
+                this.dragStartPos = { x: touch.clientX, y: touch.clientY };
+                this.dragSource = pieceDiv;
+                this.dragFromGrid = isFromGrid;
+                this.isDragging = false;
+            }
+            
+            // 拖动移动
+            onDragMove(e) {
+                if (!this.dragSource || this.gameState !== 'playing') return;
+                
+                const touch = e.touches[0];
+                const dx = touch.clientX - this.dragStartPos.x;
+                const dy = touch.clientY - this.dragStartPos.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // 超过阈值才开始拖动
+                if (!this.isDragging && distance > this.dragThreshold) {
+                    this.isDragging = true;
+                    this.startDragVisual(touch);
+                    e.preventDefault();
+                }
+                
+                if (this.isDragging) {
+                    e.preventDefault();
+                    this.updateDragPosition(touch);
+                    this.updateDragOverCell(touch);
+                }
+            }
+            
+            // 开始拖动视觉效果
+            startDragVisual(touch) {
+                // 创建浮动副本
+                this.dragGhost = document.createElement('div');
+                this.dragGhost.className = 'drag-ghost';
+                this.dragGhost.style.backgroundImage = this.dragSource.style.backgroundImage;
+                this.dragGhost.style.backgroundSize = 'cover';
+                this.dragGhost.style.width = '60px';
+                this.dragGhost.style.height = '60px';
+                this.dragGhost.style.left = touch.clientX + 'px';
+                this.dragGhost.style.top = touch.clientY + 'px';
+                
+                // 如果碎片是旋转的，也旋转副本
+                if (this.dragSource.dataset.rotated === 'true') {
+                    this.dragGhost.style.transform = 'translate(-50%, -50%) scale(1.1) rotate(180deg)';
+                }
+                
+                document.body.appendChild(this.dragGhost);
+                this.dragSource.classList.add('dragging');
+                
+                // 清除之前的选择
+                this.clearSelection();
+                this.messageEl.textContent = '拖动到目标格子放置';
+            }
+            
+            // 更新拖动位置
+            updateDragPosition(touch) {
+                if (this.dragGhost) {
+                    this.dragGhost.style.left = touch.clientX + 'px';
+                    this.dragGhost.style.top = touch.clientY + 'px';
+                }
+            }
+            
+            // 更新拖动悬停的格子
+            updateDragOverCell(touch) {
+                // 清除所有格子的悬停效果
+                this.cells.forEach(cell => cell.classList.remove('drag-over'));
+                
+                // 检测当前手指下的格子
+                const targetCell = this.getCellAtPosition(touch.clientX, touch.clientY);
+                if (targetCell) {
+                    targetCell.classList.add('drag-over');
+                }
+            }
+            
+            // 获取指定位置的格子
+            getCellAtPosition(x, y) {
+                for (const cell of this.cells) {
+                    const rect = cell.getBoundingClientRect();
+                    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                        return cell;
+                    }
+                }
+                return null;
+            }
+            
+            // 拖动结束
+            onDragEnd(e) {
+                if (!this.dragSource) return;
+                
+                // 清除所有格子的悬停效果
+                this.cells.forEach(cell => cell.classList.remove('drag-over'));
+                
+                if (this.isDragging && this.dragGhost) {
+                    // 获取结束位置的格子
+                    const touch = e.changedTouches[0];
+                    const targetCell = this.getCellAtPosition(touch.clientX, touch.clientY);
+                    
+                    if (targetCell) {
+                        if (this.dragFromGrid) {
+                            // 从格子内拖动的碎片
+                            const sourceCell = this.dragSource.parentElement;
+                            if (sourceCell !== targetCell) {
+                                // 模拟格子间交换
+                                this.selectedCell = sourceCell;
+                                this.swapGridPieces(sourceCell, targetCell);
+                            }
+                        } else {
+                            // 从碎片区拖动的碎片
+                            this.selectedPiece = this.dragSource;
+                            const existingPiece = targetCell.querySelector('.puzzle-piece');
+                            
+                            if (existingPiece) {
+                                this.swapWithCell(targetCell, existingPiece);
+                            } else {
+                                this.placeToCell(targetCell);
+                            }
+                        }
+                    }
+                    
+                    // 清除拖动视觉
+                    this.dragGhost.remove();
+                    this.dragGhost = null;
+                    this.dragSource.classList.remove('dragging');
+                }
+                
+                this.isDragging = false;
+                this.dragSource = null;
+                this.dragFromGrid = false;
+            }
+            
             // 点击碎片
             onPieceClick(e, pieceDiv) {
                 e.stopPropagation();
                 if (this.gameState !== 'playing') return;
+                
+                // 如果刚刚完成拖动，不触发点击
+                if (this.isDragging) return;
 
                 // 取消之前的选择
                 this.clearSelection();
@@ -1386,8 +1576,6 @@
                 } else {
                     // 目标格子为空，移动碎片
                     targetCell.appendChild(sourcePiece);
-                    targetCell.style.border = 'none';
-                    sourceCell.style.border = '1px dashed #ccc';
                     this.updateAllCellsCorrect();
                 }
 
@@ -1419,9 +1607,11 @@
 
                 // 添加点击事件以便选中和旋转
                 newPiece.addEventListener('click', (e) => this.onPuzzlePieceClick(e, newPiece));
+                
+                // 添加拖动事件
+                this.bindPuzzlePieceDragEvents(newPiece);
 
                 cell.appendChild(newPiece);
-                cell.style.border = 'none';
                 
                 // 移除碎片区的碎片
                 this.selectedPiece.remove();
@@ -1446,6 +1636,7 @@
                     newPieceItem.dataset.rotated = 'true';
                 }
                 newPieceItem.addEventListener('click', (e) => this.onPieceClick(e, newPieceItem));
+                this.bindDragEvents(newPieceItem);
                 this.piecesContainer.appendChild(newPieceItem);
                 
                 existingPiece.remove();
@@ -1548,6 +1739,7 @@
                     pieceDiv.dataset.originalRow = piece.originalRow;
                     pieceDiv.dataset.originalCol = piece.originalCol;
                     pieceDiv.addEventListener('click', (e) => this.onPieceClick(e, pieceDiv));
+                    this.bindDragEvents(pieceDiv);
                     this.piecesContainer.appendChild(pieceDiv);
                 });
                 
@@ -1745,7 +1937,7 @@
                 if (this.isActive) return;
                 this.isActive = true;
                 this.overlay.classList.add('active');
-                this.tipText.textContent = '点按碎片选中，再点按格子放置。选中碎片后可使用翻转按钮旋转（如果开启旋转）。点击任意位置关闭教程。';
+                this.tipText.textContent = '点按碎片选中再点按格子放置，或直接拖动碎片到格子。选中碎片后可使用翻转按钮旋转（如果开启旋转）。点击任意位置关闭教程。';
                 this.tipBox.style.top = '50%';
                 this.tipBox.style.left = '50%';
                 this.tipBox.style.transform = 'translate(-50%, -50%)';
