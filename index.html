@@ -2395,9 +2395,17 @@
         });
     </script>
 
+    <!-- 定义 API 地址 -->
+    <script>
+    window.API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000'
+        : 'https://htppsychologyjigsaw.xyz';
+    console.log('✅ API_BASE_URL 已设置:', window.API_BASE_URL);
+    </script>
+
     <!-- 心理分析报告功能 -->
     <script src="frontend-integration.js"></script>
-    
+
     <!-- 绑定心理分析报告按钮 -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
