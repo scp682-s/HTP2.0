@@ -9,7 +9,7 @@
 // 后端API地址（自动检测环境）
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:5000'  // 本地开发环境
-    : window.location.origin;   // 生产环境（Vercel等）
+    : 'https://htppsychologyjigsaw.xyz';   // 生产环境（你的自定义域名）
 
 /**
  * 收集游戏数据
