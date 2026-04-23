@@ -6,7 +6,9 @@
       "Bash(git push:*)",
       "Bash(python app.py)",
       "Bash(curl http://localhost:5000/api/health)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(python -c ' *)",
+      "Bash(python test_api.py)"
     ]
   }
 }

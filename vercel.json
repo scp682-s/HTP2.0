@@ -11,8 +11,5 @@
       "src": "/api/(.*)",
       "dest": "backend/app.py"
     }
-  ],
-  "env": {
-    "DEEPSEEK_API_KEY": "@deepseek_api_key"
-  }
+  ]
 }
