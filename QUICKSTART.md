@@ -40,6 +40,9 @@ copy .env.example .env
 5. 编辑 `.env` 文件，填入你的API Key：
 ```
 DEEPSEEK_API_KEY=sk-你的API密钥
+BAILIAN_API_KEY=sk-你的阿里云百炼API密钥
+# 可选：上传图片大小上限（MB），默认20
+CUSTOM_IMAGE_MAX_MB=20
 ```
 
 6. 启动后端服务：
@@ -64,20 +67,20 @@ nano .env
 python3 app.py
 ```
 
-## 第三步：集成前端
+## 第三步：启动前端
 
-在 `index.html` 文件的 `</body>` 标签之前添加：
-
-```html
-<!-- 心理分析报告功能 -->
-<script src="frontend-integration.js"></script>
+前端已完成集成，直接进入 `frontend` 目录启动静态服务：
+```bash
+cd frontend
+python -m http.server 8000
 ```
+然后访问 `http://localhost:8000`
 
 ## 第四步：测试
 
 1. 确保后端服务正在运行（http://localhost:5000）
-2. 打开游戏页面（index.html）
-3. 选择游戏提供的四张图片之一（不要选自定义图片）
+2. 打开游戏页面（frontend/index.html 或 http://localhost:8000）
+3. 选择游戏提供的四张图片之一，或上传自定义图片（必须包含房子、树、人物三元素）
 4. 完成拼图游戏
 5. 在完成页面点击"查看心理分析报告"按钮
 6. 等待几秒，报告生成完成
@@ -94,11 +97,11 @@ cd backend
 python app.py
 ```
 
-### 2. 提示"不支持分析用户上传的图片"
+### 2. 提示"上传图片未通过校验"
 
-**原因**：选择了自定义上传的图片
+**原因**：上传图片缺少房子、树、人物中的至少一种元素
 
-**解决**：选择游戏提供的四张标准图片之一
+**解决**：更换为同时包含房子、树、人物三种元素的图片，或使用内置标准图片
 
 ### 3. 提示"API Key错误"
 

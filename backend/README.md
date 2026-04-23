@@ -2,13 +2,19 @@
 
 ## 功能说明
 
-这是房树人拼图游戏的后端服务，用于调用AI API生成心理分析报告。
+这是房树人拼图游戏的后端服务，包含两部分能力：
+
+1. 调用AI API生成心理分析报告
+2. 提供服务端拼图引擎（拼图算法、状态校验、回退、交换、翻转等）
+3. 使用 SQLite 记录用户操作轨迹，并提炼“近期行为摘要”参与提示词构建
 
 ### 重要安全限制
 
-1. **只分析游戏提供的图片**：系统只能分析游戏内置的四张标准房树人图像（photo/1.png, photo/2.png, photo/3.jpg, photo/4.jpg）
-2. **禁止分析用户上传图片**：用户上传的自定义图片不会被发送到AI进行分析，确保用户隐私安全
-3. **只分析操作行为**：AI只能基于用户的拼图操作行为（完成时间、步数、顺序等）进行分析
+1. **支持两类图片**：
+   - 游戏内置四张标准房树人图像（photo/1.png, photo/2.png, photo/3.jpg, photo/4.jpg）
+   - 用户上传图片（仅当图片内容同时包含“房子+树+人物”三要素）
+2. **三要素强校验**：用户上传图片会通过阿里云百炼多模态模型做内容校验；缺少任一元素会被拒绝
+3. **只分析操作行为**：心理报告仍以拼图行为数据为主证据（用时、步数、间隔、修改等）
 
 ## 免费AI API推荐
 
@@ -66,6 +72,10 @@ cp .env.example .env
 
 ```
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
+BAILIAN_API_KEY=sk-xxxxxxxxxxxxxxxx
+# 可选：BAILIAN_VISION_MODEL=qwen-vl-max-latest,qwen-vl-max
+# 可选：CUSTOM_IMAGE_MAX_MB=20
+# 可选：BAILIAN_IMAGE_MAX_MB=9
 ```
 
 ### 3. 启动后端服务
@@ -89,6 +99,8 @@ POST /api/generate-report
 Content-Type: application/json
 
 {
+  "clientId": "web-xxxxxx",
+  "gameId": "f2b8b5...",
   "imageSource": "photo/1.png",
   "gameData": {
     "completionTime": "02:30",
@@ -111,11 +123,11 @@ Content-Type: application/json
 }
 ```
 
-**错误响应（用户上传图片）**:
+**错误响应（上传图片缺少三要素）**:
 ```json
 {
-  "error": "不支持分析用户上传的图片",
-  "message": "为保护隐私和确保分析准确性，本系统仅支持分析游戏提供的标准房树人图像。"
+  "error": "图片校验未通过",
+  "message": "图片缺少房子、树、人物中的至少一种元素。"
 }
 ```
 
@@ -128,6 +140,75 @@ Content-Type: application/json
   "imageSource": "photo/1.png"
 }
 ```
+
+如果是用户上传图片（data URL），接口会返回三要素识别结果，例如：
+
+```json
+{
+  "valid": true,
+  "isCustom": true,
+  "allPresent": true,
+  "elements": {
+    "house": true,
+    "tree": true,
+    "person": true
+  },
+  "imageId": "a1b2c3d4e5f6g7h8",
+  "message": "图片校验通过，已检测到房子、树、人物三种元素。"
+}
+```
+
+### 4. 创建拼图局（服务端算法）
+```
+POST /api/puzzle/games
+Content-Type: application/json
+
+{
+  "clientId": "web-xxxxxx",
+  "imageSource": "photo/1.png",
+  "gridSize": 3,
+  "modifiers": {
+    "rotation": true,
+    "hidden": false,
+    "trickster": false
+  }
+}
+```
+
+### 5. 获取拼图局状态
+```
+GET /api/puzzle/games/<gameId>
+```
+
+### 6. 执行拼图动作
+```
+POST /api/puzzle/games/<gameId>/actions
+Content-Type: application/json
+
+{
+  "clientId": "web-xxxxxx",
+  "action": "place_from_tray",
+  "payload": {
+    "pieceId": "p-0-1",
+    "targetIndex": 0
+  }
+}
+```
+
+支持动作：
+- `place_from_tray`（托盘放置）
+- `move_cell`（格子移动/交换）
+- `rotate_piece`（翻转碎片）
+- `shuffle`（重新打乱）
+- `undo`（回退一步）
+- `solve`（自动完成）
+- `trigger_trickster`（手动触发捣蛋鬼）
+
+### 7. 行为数据落库与提示词增强
+
+- 每次创建局面、执行动作、生成报告都会更新 `backend/data/behavior_analytics.db`
+- 报告生成时会读取该 `clientId` 最近14天行为数据，提炼用时、步数、犹豫比例、难度偏好、回退占比、趋势判断
+- 近期摘要作为“补充证据”拼接进 user prompt，与本局数据共同用于生成更稳定、可解释的心理分析报告
 
 ## 切换到其他AI API
 
@@ -168,8 +249,8 @@ resp = chat_comp.do(
 
 ## 安全特性
 
-1. **图片来源验证**: 每次请求都会验证图片来源，拒绝分析用户上传的图片
-2. **白名单机制**: 只有在 `ALLOWED_IMAGES` 列表中的图片才能被分析
+1. **图片来源验证**: 每次请求都会验证图片来源
+2. **三要素校验**: 上传图片必须同时包含房子、树、人物，缺一不可
 3. **CORS保护**: 配置了跨域资源共享，只允许特定来源访问
 4. **错误处理**: 完善的错误处理机制，避免敏感信息泄露
 
@@ -182,11 +263,11 @@ resp = chat_comp.do(
 
 ## 生产部署
 
-使用 gunicorn 部署：
+使用 gunicorn 部署（当前拼图状态存储在进程内存中，必须单 worker，否则会出现“游戏不存在或已过期”）：
 
 ```bash
 pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 app:app
+gunicorn -w 1 -k gthread --threads 8 -b 0.0.0.0:5000 app:app
 ```
 
 ## 许可证

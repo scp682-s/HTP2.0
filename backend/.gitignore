@@ -37,6 +37,9 @@ wheels/
 # 日志
 *.log
 
+# 本地行为分析数据库
+data/*.db
+
 # 操作系统
 .DS_Store
 Thumbs.db

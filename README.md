@@ -5,9 +5,10 @@
 这是一个创新的心理学测验游戏，结合了经典的房树人（HTP）投射测验和拼图游戏。用户通过完成拼图，系统会基于操作行为生成专业的心理分析报告。
 
 **核心特点**：
-- ✅ 只分析游戏提供的标准房树人图像
-- ✅ 严格保护用户隐私，不分析用户上传的图片
+- ✅ 支持内置图片与用户上传图片
+- ✅ 用户上传图片必须同时包含“房子+树+人物”三元素才可使用
 - ✅ 基于AI大模型生成专业心理分析
+- ✅ SQLite记录拼图行为并提炼近期画像，增强提示词质量
 - ✅ 完全免费（使用免费AI API额度）
 
 ---
@@ -28,7 +29,7 @@
 
 3. **配置API密钥**
    - 编辑 `backend\.env` 文件
-   - 填入你的 `DEEPSEEK_API_KEY`
+   - 填入 `DEEPSEEK_API_KEY`（心理报告）和 `BAILIAN_API_KEY`（图片三要素校验）
 
 ### Mac/Linux用户
 
@@ -41,7 +42,11 @@ chmod +x install.sh
 2. **配置API密钥**
 ```bash
 nano backend/.env
-# 填入 DEEPSEEK_API_KEY=sk-你的密钥
+# 填入：
+# DEEPSEEK_API_KEY=sk-你的密钥
+# BAILIAN_API_KEY=sk-你的密钥
+# CUSTOM_IMAGE_MAX_MB=20
+# BAILIAN_IMAGE_MAX_MB=9
 ```
 
 ---
@@ -91,11 +96,12 @@ python3 app.py
 
 ### 2. 打开游戏页面
 
-直接用浏览器打开 `index.html` 文件
+直接用浏览器打开 `frontend/index.html` 文件
 
 或者使用本地服务器：
 ```bash
 # Python 3
+cd frontend
 python -m http.server 8000
 
 # 然后访问 http://localhost:8000
@@ -115,9 +121,10 @@ python test_api.py
 
 ### 第一步：开始游戏
 
-1. 打开 `index.html`
+1. 打开 `frontend/index.html`
 2. 点击"开始游戏"
 3. 选择一张图片（**必须选择游戏提供的4张图片之一**）
+   也可上传自定义图片，但必须包含“房子、树、人物”三种元素
 4. 选择难度等级
 5. 点击"生成拼图"
 
@@ -145,26 +152,23 @@ python test_api.py
 - photo/2.png
 - photo/3.jpg
 - photo/4.jpg
+- 用户上传图片（仅当同时包含房子、树、人物三元素）
 
 **❌ 不能分析的图片**：
-- 用户上传的自定义图片
-- 其他来源的图片
+- 缺少房子、树、人物任一元素的上传图片
+- 非图片数据或非法来源图片
 
-### 为什么不分析用户上传的图片？
+### 为什么要做三要素校验？
 
-1. **隐私保护**：用户上传的图片可能包含个人隐私信息
-2. **分析准确性**：只有标准的房树人图像才能进行准确的心理分析
-3. **安全考虑**：避免用户上传不当内容
+1. **保证任务一致性**：房树人拼图需要三元素共同存在
+2. **保证解释有效性**：缺少关键元素会影响行为与内容关联解释
+3. **安全控制**：过滤不相关或无效内容
 
 ### 如果选择了自定义图片
 
 系统会显示提示：
 ```
-提示：用户上传的图片不会被AI分析。
-
-为保护您的隐私，本系统只能分析游戏提供的标准房树人图像。
-
-如需获得心理分析报告，请选择游戏内置的四张图片之一。
+上传图片未通过校验，请确保同时包含房子、树、人物三种元素。
 ```
 
 ---
@@ -219,7 +223,7 @@ python app.py
 app.run(host='0.0.0.0', port=5001, debug=True)  # 改为5001
 ```
 
-同时修改 `frontend-integration.js`：
+同时修改 `frontend/frontend-integration.js`：
 ```javascript
 const API_BASE_URL = 'http://localhost:5001';
 ```
@@ -250,8 +254,12 @@ const API_BASE_URL = 'http://localhost:5001';
 
 ```
 项目根目录/
-├── index.html              # 游戏主页面
-├── frontend-integration.js # 前端集成代码（AI报告功能）
+├── frontend/              # 前端目录（页面与静态资源）
+│   ├── index.html         # 游戏主页面
+│   ├── app.js             # 前端交互逻辑（调用后端拼图API）
+│   ├── frontend-integration.js # AI报告集成
+│   ├── photo/             # 前端图片资源
+│   └── music/             # 前端音乐资源
 ├── install.bat            # Windows安装脚本
 ├── install.sh             # Mac/Linux安装脚本
 ├── QUICKSTART.md          # 快速开始指南
@@ -260,6 +268,7 @@ const API_BASE_URL = 'http://localhost:5001';
 │
 ├── backend/               # 后端目录
 │   ├── app.py            # Flask应用（核心代码）
+│   ├── puzzle_engine.py  # 拼图算法引擎（服务端状态机）
 │   ├── requirements.txt  # Python依赖列表
 │   ├── .env.example      # 环境变量示例
 │   ├── .env              # 环境变量（需自己创建）
@@ -267,8 +276,8 @@ const API_BASE_URL = 'http://localhost:5001';
 │   ├── README.md         # 后端详细说明
 │   └── API_EXAMPLES.md   # 其他AI API集成示例
 │
-├── photo/                # 标准房树人图像（4张）
-└── music/                # 背景音乐
+├── photo/                # 原始素材目录
+└── music/                # 原始素材目录
 ```
 
 ---
@@ -311,7 +320,7 @@ const API_BASE_URL = 'http://localhost:5001';
 
 1. 将图片放入 `photo/` 目录
 2. 在 `backend/app.py` 中添加到 `ALLOWED_IMAGES` 列表
-3. 在 `index.html` 中添加到 `imageList` 数组
+3. 在 `frontend/index.html` 中添加到 `imageList` 数组
 
 ### 切换AI服务商
 
@@ -360,7 +369,7 @@ MIT License
 1. 运行 `install.bat`（Windows）或 `./install.sh`（Mac/Linux）
 2. 配置 `backend/.env` 文件
 3. 启动后端：`python backend/app.py`
-4. 打开 `index.html`
+4. 打开 `frontend/index.html`
 5. 开始游戏！
 
 **祝你使用愉快！** 🎮✨
